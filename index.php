@@ -30,25 +30,23 @@ body {
 EOT;
 
 $url = $_POST['url'] ?? '';
-if (empty($url)) {
-    echo <<<EOT
+echo <<<EOT
     <h1>Enter URL:</h1>
     <form method="post">
         <input type="text" name="url" placeholder="URL (without http/https)">
         <input type="submit" value="Submit">
     </form>
+    <hr>
     EOT;
+
+
+if (empty($url)) {
     exit;
 }
 
 
 
-function padding($left, $right)
-{
-    $left = str_pad($left, 30, " ", STR_PAD_RIGHT);
-    $right = str_pad($right, 30, " ", STR_PAD_LEFT);
-    return $left . $right . "<br>";
-}
+
 
 function print_html_line($text)
 {
@@ -72,7 +70,8 @@ function get_status_color(int $status)
 function request_option($accept_encoding, $http_version, $ip_version)
 {
     return [
-        'decode_content' => $accept_encoding,
+        'decode_content' => false,
+        'headers'        => ['Accept-Encoding' => $accept_encoding],
         'allow_redirects' => [
             'max'             => 5,
             'referer'         => true,
@@ -88,6 +87,8 @@ function request_option($accept_encoding, $http_version, $ip_version)
             global $redirects;
             global $errors;
             global $success;
+            global $slow_or_failed;
+
             $handlerStats = $stats->getHandlerStats();
 
             if ($stats->hasResponse()) {
@@ -103,6 +104,10 @@ function request_option($accept_encoding, $http_version, $ip_version)
                     $errors++;
                 }
 
+                if ($stats->getTransferTime() > 1.0) {
+                    $slow_or_failed .= "slow: " . "{$accept_encoding} - {$http_version} - {$ip_version}";
+                }
+
                 $status_color = get_status_color($response->getStatusCode());
                 echo '<div class="box" style="border: 3px solid ' . $status_color . '">';
 
@@ -115,6 +120,9 @@ function request_option($accept_encoding, $http_version, $ip_version)
                 print_html_line("redirect_url: " . $handlerStats["redirect_url"]);
                 print_html_line("primary_ip: " . $handlerStats["primary_ip"]);
                 print_html_line("primary_port: " . $handlerStats["primary_port"]);
+                if (count($response->getHeader("content-encoding")) > 0) {
+                    print_html_line("content-encoding: " . $response->getHeader("content-encoding")[0]);
+                }
 
                 echo "</div>";
             } else {
@@ -128,7 +136,7 @@ function request_option($accept_encoding, $http_version, $ip_version)
 $http_protocols = ['http', 'https'];
 $http_versions = [1.0, 1.1, 2];
 $ip_versions = ['v4', 'v6'];
-$accept_encodings = ['gzip', 'deflate'];
+$accept_encodings = ['gzip', 'deflate', 'br', ''];
 
 
 
@@ -141,6 +149,7 @@ $request_num = 0;
 $redirects = 0;
 $errors = 0;
 $success = 0;
+$slow_or_failed = "";
 
 foreach ($http_protocols as $http_protocol) {
     foreach ($http_versions as $http_version) {
@@ -173,12 +182,12 @@ foreach ($http_protocols as $http_protocol) {
                         request_option($accept_encoding, $http_version, $ip_version)
                     );
 
-                    // $redirects = $response->getHeader('X-Guzzle-Redirect-History');
-                    // echo padding("Redirect-History:", implode(' -> ', $redirects));
-                    // // echo "Redirect-History : " . implode(' -> ', $redirects);
+                    print_html_line('<b>Redirects:</b>');
+                    $redirects_path = $response->getHeader('X-Guzzle-Redirect-History');
+                    print_html_line("Redirect-History:" . implode(' -> ', $redirects_path));
 
-                    // $redirect_history = $response->getHeader('X-Guzzle-Redirect-Status-History');
-                    // echo "Redirect-Status-History : " . implode(' -> ', $redirect_history) . "\n<br>";
+                    $redirect_history = $response->getHeader('X-Guzzle-Redirect-Status-History');
+                    print_html_line("Redirect-Status-History : " . implode(' -> ', $redirect_history));
                 } catch (Exception $e) {
                     echo $e->getMessage();
                 } finally {
